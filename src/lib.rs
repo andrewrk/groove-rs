@@ -1,7 +1,7 @@
 #![allow(unstable)]
 extern crate libc;
 
-use libc::{c_int, uint64_t};
+use libc::{c_int, uint64_t, c_char};
 
 #[link(name="groove")]
 extern {
@@ -11,6 +11,10 @@ extern {
     fn groove_channel_layout_count(channel_layout: uint64_t) -> c_int;
     fn groove_channel_layout_default(count: c_int) -> uint64_t;
     fn groove_sample_format_bytes_per_sample(format: i32) -> c_int;
+    fn groove_version_major() -> c_int;
+    fn groove_version_minor() -> c_int;
+    fn groove_version_patch() -> c_int;
+    fn groove_version() -> *const c_char;
 }
 
 pub enum Log {
@@ -151,4 +155,24 @@ pub fn set_logging(level: Log) {
         Log::Info    => 32,
     };
     unsafe { groove_set_logging(c_level) }
+}
+
+pub fn version_major() -> i32 {
+    unsafe { groove_version_major() }
+}
+
+pub fn version_minor() -> i32 {
+    unsafe { groove_version_minor() }
+}
+
+pub fn version_patch() -> i32 {
+    unsafe { groove_version_patch() }
+}
+
+pub fn version() -> &'static str {
+    unsafe {
+        let version = groove_version();
+        let slice = std::ffi::c_str_to_bytes(&version);
+        std::mem::transmute::<&str, &'static str>(std::str::from_utf8(slice).unwrap())
+    }
 }

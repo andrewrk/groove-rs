@@ -5,7 +5,6 @@ extern crate groove;
 fn main() {
     groove::init();
     groove::set_logging(groove::Log::Info);
-
-    println!("hello");
+    println!("libgroove version {}", groove::version());
     groove::finish();
 }
