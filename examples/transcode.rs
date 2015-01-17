@@ -2,6 +2,7 @@
 extern crate groove;
 
 use std::option::Option;
+use std::io::File;
 
 // transcode one or more files into one output file
 
@@ -75,15 +76,15 @@ fn main() {
     let encoder = groove::Encoder::new();
     encoder.set_bit_rate(bit_rate_k * 1000);
     match format_option {
-        Option::Some(format) => { encoder.set_format_short_name(format) },
+        Option::Some(format) => encoder.set_format_short_name(format),
         _ => {},
     }
     match codec_option {
-        Option::Some(codec) => { encoder.set_codec_short_name(codec) },
+        Option::Some(codec) => encoder.set_codec_short_name(codec),
         _ => {},
     }
     match mime_option {
-        Option::Some(mime) => { encoder.set_mime_type(mime) },
+        Option::Some(mime) => encoder.set_mime_type(mime),
         _ => {},
     }
     encoder.set_filename(output_file_name);
@@ -101,44 +102,26 @@ fn main() {
 
     encoder.attach(&playlist).ok().expect("error attaching encoder");
 
+    let mut f = match File::create(&Path::new(output_file_name)) {
+        Err(_) => {
+            let _ = writeln!(&mut stderr, "Error opening output file {}", output_file_name);
+            std::os::set_exit_status(1);
+            return;
+        },
+        Ok(file) => file,
+    };
 
+    loop {
+        match encoder.buffer_get_blocking() {
+            Option::Some(buf) => {
+                f.write(buf.as_vec()).ok().expect("write error");
+            },
+            Option::None => break,
+        }
+    }
 
     groove::finish();
 }
-/*
-int main(int argc, char * argv[]) {
-    FILE *f = fopen(output_file_name, "wb");
-    if (!f) {
-        fprintf(stderr, "Error opening output file %s\n", output_file_name);
-        return 1;
-    }
-
-    struct GrooveBuffer *buffer;
-
-    while (groove_encoder_buffer_get(encoder, &buffer, 1) == GROOVE_BUFFER_YES) {
-        fwrite(buffer->data[0], 1, buffer->size, f);
-        groove_buffer_unref(buffer);
-    }
-
-    fclose(f);
-
-    groove_encoder_detach(encoder);
-    groove_encoder_destroy(encoder);
-
-    struct GroovePlaylistItem *item = playlist->head;
-    while (item) {
-        struct GrooveFile *file = item->file;
-        struct GroovePlaylistItem *next = item->next;
-        groove_playlist_remove(playlist, item);
-        groove_file_close(file);
-        item = next;
-    }
-    groove_playlist_destroy(playlist);
-
-    return 0;
-}
-*/
-
 
 fn print_usage(stderr: &mut std::io::LineBufferedWriter<std::io::stdio::StdWriter>, exe: &str) {
     let _ = write!(stderr, "Usage: {} file1 [file2 ...] --output outputfile [--bitrate 320] [--format name] [--codec name] [--mime mimetype]\n", exe);

@@ -5,7 +5,7 @@ extern crate libc;
 use std::str::Utf8Error;
 use std::option::Option;
 use std::result::Result;
-use libc::{c_int, uint64_t, c_char, c_void, c_double};
+use libc::{c_int, uint64_t, c_char, c_void, c_double, uint8_t};
 use std::ffi::CString;
 
 #[link(name="groove")]
@@ -47,6 +47,61 @@ extern {
                                    value: *const c_char, flags: c_int) -> c_int;
     fn groove_encoder_attach(encoder: *mut GrooveEncoder, playlist: *mut GroovePlaylist) -> c_int;
     fn groove_encoder_detach(encoder: *mut GrooveEncoder) -> c_int;
+    fn groove_encoder_buffer_get(encoder: *mut GrooveEncoder, buffer: *mut *mut GrooveBuffer,
+                                 block: c_int) -> c_int;
+
+    fn groove_buffer_unref(buffer: *mut GrooveBuffer);
+}
+
+/// all fields read-only
+#[repr(C)]
+struct GrooveBuffer {
+    /// for interleaved audio, data[0] is the buffer.
+    /// for planar audio, each channel has a separate data pointer.
+    /// for encoded audio, data[0] is the encoded buffer.
+    data: *mut *mut uint8_t,
+
+    format: GrooveAudioFormat,
+
+    /// number of audio frames described by this buffer
+    /// for encoded audio, this is unknown and set to 0.
+    frame_count: c_int,
+
+    /// when encoding, if item is NULL, this is a format header or trailer.
+    /// otherwise, this is encoded audio for the item specified.
+    /// when decoding, item is never NULL.
+    item: *mut GroovePlaylistItem,
+    pos: c_double,
+
+    /// total number of bytes contained in this buffer
+    size: c_int,
+
+    /// presentation time stamp of the buffer
+    pts: uint64_t,
+}
+
+pub struct Buf {
+    groove_buffer: *mut GrooveBuffer,
+}
+
+impl Drop for Buf {
+    fn drop(&mut self) {
+        unsafe {
+            groove_buffer_unref(self.groove_buffer);
+        }
+    }
+}
+
+impl Buf {
+    pub fn as_vec(&self) -> &[u8] {
+        unsafe {
+            let raw_slice = std::raw::Slice {
+                data: *(*self.groove_buffer).data,
+                len: (*self.groove_buffer).size as usize,
+            };
+            std::mem::transmute::<std::raw::Slice<uint8_t>, &[u8]>(raw_slice)
+        }
+    }
 }
 
 /// all fields are read-only. modify with methods
@@ -692,6 +747,8 @@ impl Encoder {
         }
     }
 
+    /// at playlist begin, format headers are generated. when end of playlist is
+    /// reached, format trailers are generated.
     pub fn attach(&self, playlist: &Playlist) -> Result<(), i32> {
         unsafe {
             let err_code = groove_encoder_attach(self.groove_encoder, playlist.groove_playlist);
@@ -706,6 +763,20 @@ impl Encoder {
     pub fn detach(&self) {
         unsafe {
             let _ = groove_encoder_detach(self.groove_encoder);
+        }
+    }
+
+    /// returns None on end of playlist, Some<Buf> when there is a buffer
+    /// blocks the thread until a buffer or end is found
+    pub fn buffer_get_blocking(&self) -> Option<Buf> {
+        unsafe {
+            let mut buffer: *mut GrooveBuffer = std::ptr::null_mut();
+            match groove_encoder_buffer_get(self.groove_encoder, &mut buffer, 1) {
+                BUFFER_NO  => panic!("did not expect BUFFER_NO when blocking"),
+                BUFFER_YES => Option::Some(Buf { groove_buffer: buffer }),
+                BUFFER_END => Option::None,
+                _ => panic!("unexpected buffer result"),
+            }
         }
     }
 }
@@ -767,3 +838,7 @@ pub fn file_open(filename: &Path) -> Option<File> {
 }
 
 const TAG_MATCH_CASE: c_int = 1;
+
+const BUFFER_NO:  c_int = 0;
+const BUFFER_YES: c_int = 1;
+const BUFFER_END: c_int = 2;
