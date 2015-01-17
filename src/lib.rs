@@ -7,6 +7,27 @@ use std::result::Result;
 use libc::{c_int, uint64_t, c_char, c_void};
 use std::ffi::CString;
 
+#[link(name="groove")]
+extern {
+    fn groove_init() -> c_int;
+    fn groove_finish();
+    fn groove_set_logging(level: c_int);
+    fn groove_channel_layout_count(channel_layout: uint64_t) -> c_int;
+    fn groove_channel_layout_default(count: c_int) -> uint64_t;
+    fn groove_sample_format_bytes_per_sample(format: c_int) -> c_int;
+    fn groove_version_major() -> c_int;
+    fn groove_version_minor() -> c_int;
+    fn groove_version_patch() -> c_int;
+    fn groove_version() -> *const c_char;
+    fn groove_file_open(filename: *const c_char) -> *mut GrooveFile;
+    fn groove_file_close(file: *mut GrooveFile);
+    fn groove_file_duration(file: *mut GrooveFile) -> f64;
+    fn groove_tag_key(tag: *mut c_void) -> *const c_char;
+    fn groove_tag_value(tag: *mut c_void) -> *const c_char;
+    fn groove_file_metadata_get(file: *mut GrooveFile, key: *const c_char,
+                                prev: *const c_void, flags: c_int) -> *mut c_void;
+}
+
 #[repr(C)]
 struct GrooveFile {
     dirty: c_int,
@@ -59,27 +80,32 @@ impl File {
             }
         }
     }
+
+    pub fn metadata_iter(&self) -> MetadataIterator {
+        MetadataIterator { file: self, curr: std::ptr::null() }
+    }
 }
 
-#[link(name="groove")]
-extern {
-    fn groove_init() -> c_int;
-    fn groove_finish();
-    fn groove_set_logging(level: c_int);
-    fn groove_channel_layout_count(channel_layout: uint64_t) -> c_int;
-    fn groove_channel_layout_default(count: c_int) -> uint64_t;
-    fn groove_sample_format_bytes_per_sample(format: c_int) -> c_int;
-    fn groove_version_major() -> c_int;
-    fn groove_version_minor() -> c_int;
-    fn groove_version_patch() -> c_int;
-    fn groove_version() -> *const c_char;
-    fn groove_file_open(filename: *const c_char) -> *mut GrooveFile;
-    fn groove_file_close(file: *mut GrooveFile);
-    fn groove_file_duration(file: *mut GrooveFile) -> f64;
-    fn groove_tag_key(tag: *mut c_void) -> *const c_char;
-    fn groove_tag_value(tag: *mut c_void) -> *const c_char;
-    fn groove_file_metadata_get(file: *mut GrooveFile, key: *const c_char,
-                                prev: *const c_void, flags: c_int) -> *mut c_void;
+pub struct MetadataIterator<'a> {
+    file: &'a File,
+    curr: *const c_void,
+}
+
+impl<'a> Iterator for MetadataIterator<'a> {
+    type Item = Tag<'a>;
+    fn next(&mut self) -> Option<Tag> {
+        let c_tag_key = CString::from_slice("".as_bytes());
+        unsafe {
+            let tag = groove_file_metadata_get(self.file.groove_file, c_tag_key.as_ptr(),
+                                               self.curr, 0);
+            self.curr = tag;
+            if tag.is_null() {
+                Option::None
+            } else {
+                Option::Some(Tag {groove_tag: tag})
+            }
+        }
+    }
 }
 
 pub enum Log {

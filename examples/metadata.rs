@@ -22,7 +22,12 @@ fn main() {
     {
         let file = groove::file_open(filename).expect("error opening file");
         println!("duration={}", file.duration());
-        println!("artist={}", file.metadata_get("artist", false).unwrap().value().ok().unwrap());
+
+        for tag in file.metadata_iter() {
+            let k = tag.key().ok().unwrap();
+            let v = tag.value().ok().unwrap();
+            println!("{}={}", k, v);
+        }
     }
 
     groove::finish();
