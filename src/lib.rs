@@ -2,6 +2,39 @@
 extern crate libc;
 
 use libc::{c_int, uint64_t, c_char};
+use std::ffi::CString;
+
+#[repr(C)]
+struct GrooveFile {
+    dirty: c_int,
+    filename: *const c_char,
+}
+
+pub struct File {
+    groove_file: *mut GrooveFile,
+}
+
+impl Drop for File {
+    fn drop(&mut self) {
+        unsafe { groove_file_close(self.groove_file) }
+    }
+}
+
+impl File {
+    pub fn filename(&self) -> Path {
+        unsafe {
+            let groove_file = *self.groove_file;
+            let slice = std::ffi::c_str_to_bytes(&groove_file.filename);
+            Path::new(slice)
+        }
+    }
+    pub fn is_dirty(&self) -> bool {
+        unsafe {
+            let groove_file = *self.groove_file;
+            groove_file.dirty == 1
+        }
+    }
+}
 
 #[link(name="groove")]
 extern {
@@ -15,6 +48,8 @@ extern {
     fn groove_version_minor() -> c_int;
     fn groove_version_patch() -> c_int;
     fn groove_version() -> *const c_char;
+    fn groove_file_open(filename: *const c_char) -> *mut GrooveFile;
+    fn groove_file_close(file: *mut GrooveFile);
 }
 
 pub enum Log {
@@ -169,10 +204,20 @@ pub fn version_patch() -> i32 {
     unsafe { groove_version_patch() }
 }
 
+/// get a string which represents the version number of libgroove
 pub fn version() -> &'static str {
     unsafe {
         let version = groove_version();
         let slice = std::ffi::c_str_to_bytes(&version);
         std::mem::transmute::<&str, &'static str>(std::str::from_utf8(slice).unwrap())
+    }
+}
+
+/// open a file on disk and prepare to stream audio from it
+pub fn file_open(filename: &str) -> File {
+    let c_filename = CString::from_slice(filename.as_bytes());
+    unsafe {
+        let groove_file = groove_file_open(c_filename.as_ptr());
+        File { groove_file: groove_file }
     }
 }
