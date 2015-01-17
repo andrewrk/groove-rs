@@ -15,12 +15,12 @@ fn main() {
     }
     let _ = writeln!(&mut stderr, "Using libgroove version v{}", groove::version());
 
-    let filename = args[1].as_slice();
+    let filename = Path::new(args[1].as_bytes());
     groove::init();
     groove::set_logging(groove::Log::Info);
 
     {
-        let file = groove::file_open(filename).expect("error opening file");
+        let file = groove::file_open(&filename).expect("error opening file");
 
         let mut i = 2;
         while i < args.len() {

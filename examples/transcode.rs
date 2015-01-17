@@ -51,7 +51,7 @@ fn main() {
                 return;
             }
         } else {
-            match groove::file_open(full_arg) {
+            match groove::file_open(&Path::new(full_arg.as_bytes())) {
                 Option::Some(file) => {
                     playlist.append(&file, 1.0, 1.0);
                 },
@@ -99,15 +99,14 @@ fn main() {
         }
     }
 
+    encoder.attach(&playlist).ok().expect("error attaching encoder");
+
+
+
     groove::finish();
 }
 /*
 int main(int argc, char * argv[]) {
-    if (groove_encoder_attach(encoder, playlist) < 0) {
-        fprintf(stderr, "error attaching encoder\n");
-        return 1;
-    }
-
     FILE *f = fopen(output_file_name, "wb");
     if (!f) {
         fprintf(stderr, "Error opening output file %s\n", output_file_name);

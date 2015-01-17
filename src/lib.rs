@@ -45,6 +45,8 @@ extern {
     fn groove_encoder_destroy(encoder: *mut GrooveEncoder);
     fn groove_encoder_metadata_set(encoder: *mut GrooveEncoder, key: *const c_char,
                                    value: *const c_char, flags: c_int) -> c_int;
+    fn groove_encoder_attach(encoder: *mut GrooveEncoder, playlist: *mut GroovePlaylist) -> c_int;
+    fn groove_encoder_detach(encoder: *mut GrooveEncoder) -> c_int;
 }
 
 /// all fields are read-only. modify with methods
@@ -579,7 +581,12 @@ pub struct Encoder {
 
 impl Drop for Encoder {
     fn drop(&mut self) {
-        unsafe { groove_encoder_destroy(self.groove_encoder) }
+        unsafe {
+            if !(*self.groove_encoder).playlist.is_null() {
+                groove_encoder_detach(self.groove_encoder);
+            }
+            groove_encoder_destroy(self.groove_encoder)
+        }
     }
 }
 
@@ -684,6 +691,23 @@ impl Encoder {
             }
         }
     }
+
+    pub fn attach(&self, playlist: &Playlist) -> Result<(), i32> {
+        unsafe {
+            let err_code = groove_encoder_attach(self.groove_encoder, playlist.groove_playlist);
+            if err_code >= 0 {
+                Result::Ok(())
+            } else {
+                Result::Err(err_code as i32)
+            }
+        }
+    }
+
+    pub fn detach(&self) {
+        unsafe {
+            let _ = groove_encoder_detach(self.groove_encoder);
+        }
+    }
 }
 
 /// call once at the beginning of your program from the main thread
@@ -731,8 +755,8 @@ pub fn version() -> &'static str {
 }
 
 /// open a file on disk and prepare to stream audio from it
-pub fn file_open(filename: &str) -> Option<File> {
-    let c_filename = CString::from_slice(filename.as_bytes());
+pub fn file_open(filename: &Path) -> Option<File> {
+    let c_filename = CString::from_slice(filename.as_vec());
     unsafe {
         let groove_file = groove_file_open(c_filename.as_ptr());
         match groove_file.is_null() {
