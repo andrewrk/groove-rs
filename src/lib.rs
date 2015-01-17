@@ -26,6 +26,9 @@ extern {
     fn groove_tag_value(tag: *mut c_void) -> *const c_char;
     fn groove_file_metadata_get(file: *mut GrooveFile, key: *const c_char,
                                 prev: *const c_void, flags: c_int) -> *mut c_void;
+    fn groove_file_metadata_set(file: *mut GrooveFile, key: *const c_char,
+                                value: *const c_char, flags: c_int) -> c_int;
+    fn groove_file_save(file: *mut GrooveFile) -> c_int;
 }
 
 #[repr(C)]
@@ -83,6 +86,47 @@ impl File {
 
     pub fn metadata_iter(&self) -> MetadataIterator {
         MetadataIterator { file: self, curr: std::ptr::null() }
+    }
+
+    pub fn metadata_set(&self, key: &str, value: &str, case_sensitive: bool) -> Result<(), i32> {
+        let flags: c_int = if case_sensitive {TAG_MATCH_CASE} else {0};
+        let c_tag_key = CString::from_slice(key.as_bytes());
+        let c_tag_value = CString::from_slice(value.as_bytes());
+        unsafe {
+            let err_code = groove_file_metadata_set(self.groove_file, c_tag_key.as_ptr(),
+                                                    c_tag_value.as_ptr(), flags);
+            if err_code >= 0 {
+                Result::Ok(())
+            } else {
+                Result::Err(err_code as i32)
+            }
+        }
+    }
+
+    pub fn metadata_delete(&self, key: &str, case_sensitive: bool) -> Result<(), i32> {
+        let flags: c_int = if case_sensitive {TAG_MATCH_CASE} else {0};
+        let c_tag_key = CString::from_slice(key.as_bytes());
+        unsafe {
+            let err_code = groove_file_metadata_set(self.groove_file, c_tag_key.as_ptr(),
+                                                    std::ptr::null(), flags);
+            if err_code >= 0 {
+                Result::Ok(())
+            } else {
+                Result::Err(err_code as i32)
+            }
+        }
+    }
+
+    /// write changes made to metadata to disk.
+    pub fn save(&self) -> Result<(), i32> {
+        unsafe {
+            let err_code = groove_file_save(self.groove_file);
+            if err_code >= 0 {
+                Result::Ok(())
+            } else {
+                Result::Err(err_code as i32)
+            }
+        }
     }
 }
 
