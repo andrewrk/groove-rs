@@ -22,6 +22,7 @@ fn main() {
     {
         let file = groove::file_open(filename).expect("error opening file");
         println!("duration={}", file.duration());
+        println!("artist={}", file.metadata_get("artist", false).unwrap().value().ok().unwrap());
     }
 
     groove::finish();

@@ -1,8 +1,10 @@
 #![allow(unstable)]
 extern crate libc;
 
+use std::str::Utf8Error;
 use std::option::Option;
-use libc::{c_int, uint64_t, c_char};
+use std::result::Result;
+use libc::{c_int, uint64_t, c_char, c_void};
 use std::ffi::CString;
 
 #[repr(C)]
@@ -43,6 +45,20 @@ impl File {
             groove_file_duration(self.groove_file)
         }
     }
+
+    pub fn metadata_get(&self, key: &str, case_sensitive: bool) -> Option<Tag> {
+        let flags: c_int = if case_sensitive {TAG_MATCH_CASE} else {0};
+        let c_tag_key = CString::from_slice(key.as_bytes());
+        unsafe {
+            let tag = groove_file_metadata_get(self.groove_file, c_tag_key.as_ptr(),
+                                               std::ptr::null(), flags);
+            if tag.is_null() {
+                Option::None
+            } else {
+                Option::Some(Tag {groove_tag: tag})
+            }
+        }
+    }
 }
 
 #[link(name="groove")]
@@ -52,7 +68,7 @@ extern {
     fn groove_set_logging(level: c_int);
     fn groove_channel_layout_count(channel_layout: uint64_t) -> c_int;
     fn groove_channel_layout_default(count: c_int) -> uint64_t;
-    fn groove_sample_format_bytes_per_sample(format: i32) -> c_int;
+    fn groove_sample_format_bytes_per_sample(format: c_int) -> c_int;
     fn groove_version_major() -> c_int;
     fn groove_version_minor() -> c_int;
     fn groove_version_patch() -> c_int;
@@ -60,6 +76,10 @@ extern {
     fn groove_file_open(filename: *const c_char) -> *mut GrooveFile;
     fn groove_file_close(file: *mut GrooveFile);
     fn groove_file_duration(file: *mut GrooveFile) -> f64;
+    fn groove_tag_key(tag: *mut c_void) -> *const c_char;
+    fn groove_tag_value(tag: *mut c_void) -> *const c_char;
+    fn groove_file_metadata_get(file: *mut GrooveFile, key: *const c_char,
+                                prev: *const c_void, flags: c_int) -> *mut c_void;
 }
 
 pub enum Log {
@@ -179,6 +199,33 @@ impl SampleFormat {
     }
 }
 
+pub struct Tag<'a> {
+    groove_tag: *mut c_void,
+}
+
+impl<'a> Tag<'a> {
+    pub fn key(&self) -> Result<&'a str, Utf8Error> {
+        unsafe {
+            let key_c_str = groove_tag_key(self.groove_tag);
+            let slice = std::ffi::c_str_to_bytes(&key_c_str);
+            match std::str::from_utf8(slice) {
+                Result::Ok(s) => Result::Ok(std::mem::transmute::<&str, &'a str>(s)),
+                Result::Err(err) => Result::Err(err),
+            }
+        }
+    }
+    pub fn value(&self) -> Result<&'a str, Utf8Error> {
+        unsafe {
+            let val_c_str = groove_tag_value(self.groove_tag);
+            let slice = std::ffi::c_str_to_bytes(&val_c_str);
+            match std::str::from_utf8(slice) {
+                Result::Ok(s) => Result::Ok(std::mem::transmute::<&str, &'a str>(s)),
+                Result::Err(err) => Result::Err(err),
+            }
+        }
+    }
+}
+
 /// call once at the beginning of your program from the main thread
 /// returns 0 on success, < 0 on error
 pub fn init() -> isize {
@@ -234,3 +281,5 @@ pub fn file_open(filename: &str) -> Option<File> {
         }
     }
 }
+
+const TAG_MATCH_CASE: c_int = 1;
