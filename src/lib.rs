@@ -501,15 +501,8 @@ struct GrooveEncoder {
     target_audio_format: GrooveAudioFormat,
     bit_rate: c_int,
     format_short_name: *const c_char,
-    /// optional - choose a short name for the codec
-    /// to help libgroove guess which codec to use
-    /// use `avconv -codecs` to get a list of possibilities
     codec_short_name: *const c_char,
-    /// optional - provide an example filename
-    /// to help libgroove guess which format/codec to use
     filename: *const c_char,
-    /// optional - provide a mime type string
-    /// to help libgroove guess which format/codec to use
     mime_type: *const c_char,
 
     /// how big the sink buffer should be, in sample frames.
@@ -592,6 +585,34 @@ impl Encoder {
         let format_c_str = CString::from_slice(format.as_bytes());
         unsafe {
             (*self.groove_encoder).format_short_name = format_c_str.as_ptr();
+        }
+    }
+
+    /// optional - choose a short name for the codec
+    /// to help libgroove guess which codec to use
+    /// use `avconv -codecs` to get a list of possibilities
+    pub fn set_codec_short_name(&self, codec: &str) {
+        let codec_c_str = CString::from_slice(codec.as_bytes());
+        unsafe {
+            (*self.groove_encoder).codec_short_name = codec_c_str.as_ptr();
+        }
+    }
+
+    /// optional - provide an example filename
+    /// to help libgroove guess which format/codec to use
+    pub fn set_filename(&self, filename: &str) {
+        let filename_c_str = CString::from_slice(filename.as_bytes());
+        unsafe {
+            (*self.groove_encoder).filename = filename_c_str.as_ptr();
+        }
+    }
+
+    /// optional - provide a mime type string
+    /// to help libgroove guess which format/codec to use
+    pub fn set_mime_type(&self, mime_type: &str) {
+        let mime_type_c_str = CString::from_slice(mime_type.as_bytes());
+        unsafe {
+            (*self.groove_encoder).mime_type = mime_type_c_str.as_ptr();
         }
     }
 

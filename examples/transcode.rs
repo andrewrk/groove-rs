@@ -12,8 +12,8 @@ fn main() {
 
     let mut bit_rate_k = 320;
     let mut format_option = Option::None;
-    let mut codec = Option::None;
-    let mut mime = Option::None;
+    let mut codec_option = Option::None;
+    let mut mime_option = Option::None;
     let mut output_file_name_option = Option::None;
 
     groove::init();
@@ -38,10 +38,10 @@ fn main() {
                 format_option = Option::Some(args[i].as_slice());
             } else if arg == "codec" {
                 i += 1;
-                codec = Option::Some(args[i].as_slice());
+                codec_option = Option::Some(args[i].as_slice());
             } else if arg == "mime" {
                 i += 1;
-                mime = Option::Some(args[i].as_slice());
+                mime_option = Option::Some(args[i].as_slice());
             } else if arg == "output" {
                 i += 1;
                 output_file_name_option = Option::Some(args[i].as_slice());
@@ -78,16 +78,19 @@ fn main() {
         Option::Some(format) => { encoder.set_format_short_name(format) },
         _ => {},
     }
+    match codec_option {
+        Option::Some(codec) => { encoder.set_codec_short_name(codec) },
+        _ => {},
+    }
+    match mime_option {
+        Option::Some(mime) => { encoder.set_mime_type(mime) },
+        _ => {},
+    }
+    encoder.set_filename(output_file_name);
     groove::finish();
 }
 /*
 int main(int argc, char * argv[]) {
-    struct GrooveEncoder *encoder = groove_encoder_create();
-    encoder->bit_rate = bit_rate_k * 1000;
-    encoder->format_short_name = format;
-    encoder->codec_short_name = codec;
-    encoder->filename = output_file_name;
-    encoder->mime_type = mime;
     if (groove_playlist_count(playlist) == 1) {
         groove_file_audio_format(playlist->head->file, &encoder->target_audio_format);
 
