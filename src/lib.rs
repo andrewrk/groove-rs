@@ -29,6 +29,7 @@ extern {
     fn groove_file_metadata_set(file: *mut GrooveFile, key: *const c_char,
                                 value: *const c_char, flags: c_int) -> c_int;
     fn groove_file_save(file: *mut GrooveFile) -> c_int;
+    fn groove_file_audio_format(file: *mut GrooveFile, audio_format: *mut GrooveAudioFormat);
 
     fn groove_tag_key(tag: *mut c_void) -> *const c_char;
     fn groove_tag_value(tag: *mut c_void) -> *const c_char;
@@ -38,9 +39,12 @@ extern {
                               gain: c_double, peak: c_double,
                               next: *mut GroovePlaylistItem) -> *mut GroovePlaylistItem;
     fn groove_playlist_destroy(playlist: *mut GroovePlaylist);
+    fn groove_playlist_count(playlist: *mut GroovePlaylist) -> c_int;
 
     fn groove_encoder_create() -> *mut GrooveEncoder;
     fn groove_encoder_destroy(encoder: *mut GrooveEncoder);
+    fn groove_encoder_metadata_set(encoder: *mut GrooveEncoder, key: *const c_char,
+                                   value: *const c_char, flags: c_int) -> c_int;
 }
 
 /// all fields are read-only. modify with methods
@@ -81,6 +85,12 @@ impl PlaylistItem {
             (*self.groove_playlist_item).peak
         }
     }
+
+    pub fn file(&self) -> File {
+        unsafe {
+            File {groove_file: (*self.groove_playlist_item).file}
+        }
+    }
 }
 
 /// a GroovePlaylist keeps its sinks full.
@@ -116,6 +126,20 @@ impl Playlist {
     pub fn gain(&self) -> f64 {
         unsafe {
             (*self.groove_playlist).gain
+        }
+    }
+
+    /// get the first playlist item
+    pub fn first(&self) -> PlaylistItem {
+        unsafe {
+            PlaylistItem {groove_playlist_item: (*self.groove_playlist).head }
+        }
+    }
+
+    /// get the last playlist item
+    pub fn last(&self) -> PlaylistItem {
+        unsafe {
+            PlaylistItem {groove_playlist_item: (*self.groove_playlist).tail }
         }
     }
 
@@ -157,6 +181,13 @@ impl Playlist {
             } else {
                 PlaylistItem {groove_playlist_item: inserted_item}
             }
+        }
+    }
+
+    /// return the count of playlist items
+    pub fn len(&self) -> i32 {
+        unsafe {
+            groove_playlist_count(self.groove_playlist) as i32
         }
     }
 }
@@ -276,6 +307,19 @@ impl File {
             } else {
                 Result::Err(err_code as i32)
             }
+        }
+    }
+
+    /// get the audio format of the main audio stream of a file
+    pub fn audio_format(&self) -> AudioFormat {
+        unsafe {
+            let mut result = GrooveAudioFormat {
+                sample_rate: 0,
+                channel_layout: 0,
+                sample_fmt: 0,
+            };
+            groove_file_audio_format(self.groove_file, &mut result);
+            AudioFormat::from_groove(&result)
         }
     }
 }
@@ -622,6 +666,22 @@ impl Encoder {
     pub fn get_actual_audio_format(&self) -> AudioFormat {
         unsafe {
             AudioFormat::from_groove(&(*self.groove_encoder).actual_audio_format)
+        }
+    }
+
+    /// see docs for file::metadata_set
+    pub fn metadata_set(&self, key: &str, value: &str, case_sensitive: bool) -> Result<(), i32> {
+        let flags: c_int = if case_sensitive {TAG_MATCH_CASE} else {0};
+        let c_tag_key = CString::from_slice(key.as_bytes());
+        let c_tag_value = CString::from_slice(value.as_bytes());
+        unsafe {
+            let err_code = groove_encoder_metadata_set(self.groove_encoder, c_tag_key.as_ptr(),
+                                                       c_tag_value.as_ptr(), flags);
+            if err_code >= 0 {
+                Result::Ok(())
+            } else {
+                Result::Err(err_code as i32)
+            }
         }
     }
 }
