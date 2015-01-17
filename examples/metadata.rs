@@ -20,7 +20,8 @@ fn main() {
     groove::set_logging(groove::Log::Info);
 
     {
-        let _ = groove::file_open(filename).expect("error opening file");
+        let file = groove::file_open(filename).expect("error opening file");
+        println!("duration={}", file.duration());
     }
 
     groove::finish();

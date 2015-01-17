@@ -28,9 +28,19 @@ impl File {
             Path::new(slice)
         }
     }
+    /// whether the file has pending edits
     pub fn is_dirty(&self) -> bool {
         unsafe {
             (*self.groove_file).dirty == 1
+        }
+    }
+    /// main audio stream duration in seconds. note that this relies on a
+    /// combination of format headers and heuristics. It can be inaccurate.
+    /// The most accurate way to learn the duration of a file is to use
+    /// GrooveLoudnessDetector
+    pub fn duration(&self) -> f64 {
+        unsafe {
+            groove_file_duration(self.groove_file)
         }
     }
 }
@@ -49,6 +59,7 @@ extern {
     fn groove_version() -> *const c_char;
     fn groove_file_open(filename: *const c_char) -> *mut GrooveFile;
     fn groove_file_close(file: *mut GrooveFile);
+    fn groove_file_duration(file: *mut GrooveFile) -> f64;
 }
 
 pub enum Log {
