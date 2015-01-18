@@ -2,11 +2,23 @@
 #![allow(missing_copy_implementations)]
 extern crate libc;
 
+#[macro_use]
+extern crate lazy_static;
+
 use std::str::Utf8Error;
 use std::option::Option;
 use std::result::Result;
 use libc::{c_int, uint64_t, c_char, c_void, c_double, uint8_t};
 use std::ffi::CString;
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::collections::hash_map::Hasher;
+use std::sync::Mutex;
+
+lazy_static! {
+    static ref GROOVE_FILE_RC: Mutex<PointerReferenceCounter<*mut GrooveFile>> =
+        Mutex::new(PointerReferenceCounter::new());
+}
 
 #[link(name="groove")]
 extern {
@@ -40,6 +52,7 @@ extern {
                               next: *mut GroovePlaylistItem) -> *mut GroovePlaylistItem;
     fn groove_playlist_destroy(playlist: *mut GroovePlaylist);
     fn groove_playlist_count(playlist: *mut GroovePlaylist) -> c_int;
+    fn groove_playlist_clear(playlist: *mut GroovePlaylist);
 
     fn groove_encoder_create() -> *mut GrooveEncoder;
     fn groove_encoder_destroy(encoder: *mut GrooveEncoder);
@@ -145,7 +158,9 @@ impl PlaylistItem {
 
     pub fn file(&self) -> File {
         unsafe {
-            File {groove_file: (*self.groove_playlist_item).file}
+            let groove_file = (*self.groove_playlist_item).file;
+            GROOVE_FILE_RC.lock().unwrap().incr(groove_file);
+            File {groove_file: groove_file}
         }
     }
 }
@@ -167,6 +182,7 @@ pub struct Playlist {
 }
 impl Drop for Playlist {
     fn drop(&mut self) {
+        self.clear();
         unsafe { groove_playlist_destroy(self.groove_playlist) }
     }
 }
@@ -218,6 +234,7 @@ impl Playlist {
             if inserted_item.is_null() {
                 panic!("out of memory");
             } else {
+                GROOVE_FILE_RC.lock().unwrap().incr(file.groove_file);
                 PlaylistItem {groove_playlist_item: inserted_item}
             }
         }
@@ -236,6 +253,7 @@ impl Playlist {
             if inserted_item.is_null() {
                 panic!("out of memory");
             } else {
+                GROOVE_FILE_RC.lock().unwrap().incr(file.groove_file);
                 PlaylistItem {groove_playlist_item: inserted_item}
             }
         }
@@ -245,6 +263,18 @@ impl Playlist {
     pub fn len(&self) -> i32 {
         unsafe {
             groove_playlist_count(self.groove_playlist) as i32
+        }
+    }
+
+    /// remove all playlist items
+    pub fn clear(&self) {
+        unsafe {
+            let groove_files: Vec<*mut GrooveFile> =
+                self.iter().map(|x| (*x.groove_playlist_item).file).collect();
+            groove_playlist_clear(self.groove_playlist);
+            for groove_file in groove_files.iter() {
+                GROOVE_FILE_RC.lock().unwrap().decr(*groove_file);
+            }
         }
     }
 }
@@ -275,13 +305,21 @@ struct GrooveFile {
     filename: *const c_char,
 }
 
+impl Destroy for *mut GrooveFile {
+    fn destroy(&self) {
+        unsafe {
+            groove_file_close(*self);
+        }
+    }
+}
+
 pub struct File {
     groove_file: *mut GrooveFile,
 }
 
 impl Drop for File {
     fn drop(&mut self) {
-        unsafe { groove_file_close(self.groove_file) }
+        GROOVE_FILE_RC.lock().unwrap().decr(self.groove_file);
     }
 }
 
@@ -832,7 +870,10 @@ pub fn file_open(filename: &Path) -> Option<File> {
         let groove_file = groove_file_open(c_filename.as_ptr());
         match groove_file.is_null() {
             true  => Option::None,
-            false => Option::Some(File { groove_file: groove_file }),
+            false => {
+                GROOVE_FILE_RC.lock().unwrap().incr(groove_file);
+                Option::Some(File { groove_file: groove_file })
+            }
         }
     }
 }
@@ -842,3 +883,35 @@ const TAG_MATCH_CASE: c_int = 1;
 const BUFFER_NO:  c_int = 0;
 const BUFFER_YES: c_int = 1;
 const BUFFER_END: c_int = 2;
+
+trait Destroy {
+    fn destroy(&self);
+}
+
+struct PointerReferenceCounter<P: Destroy + Hash<Hasher> + Eq> {
+    map: HashMap<P, usize>,
+}
+
+impl<P: Destroy + Hash<Hasher> + Eq> PointerReferenceCounter<P> {
+    fn new() -> Self {
+        PointerReferenceCounter {
+            map: HashMap::new(),
+        }
+    }
+    fn incr(&mut self, ptr: P) {
+        let rc = match self.map.get(&ptr) {
+            Option::Some(rc) => *rc,
+            Option::None => 0,
+        };
+        self.map.insert(ptr, rc + 1);
+    }
+    fn decr(&mut self, ptr: P) {
+        let count = *self.map.get(&ptr).expect("too many dereferences");
+        if count == 1 {
+            self.map.remove(&ptr);
+            ptr.destroy();
+        } else {
+            self.map.insert(ptr, count - 1);
+        }
+    }
+}

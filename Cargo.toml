@@ -5,3 +5,7 @@ version = "0.0.1"
 authors = ["Andrew Kelley <superjoe30@gmail.com>"]
 repository = "https://github.com/andrewrk/rust-groove"
 license = "MIT"
+
+[dependencies]
+
+lazy_static = "0.1.*"
