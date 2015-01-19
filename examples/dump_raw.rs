@@ -24,7 +24,7 @@ fn main() {
     sink.attach(&playlist).ok().expect("error attaching sink");
 
     let input_filename = args[1].as_slice();
-    match groove::file_open(&Path::new(input_filename)) {
+    match groove::File::open(&Path::new(input_filename)) {
         Option::Some(file) => {
             playlist.append(&file, 1.0, 1.0);
         },

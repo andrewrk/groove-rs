@@ -515,6 +515,22 @@ impl Drop for File {
 }
 
 impl File {
+    /// open a file on disk and prepare to stream audio from it
+    pub fn open(filename: &Path) -> Option<File> {
+        init();
+        let c_filename = CString::from_slice(filename.as_vec());
+        unsafe {
+            let groove_file = groove_file_open(c_filename.as_ptr());
+            match groove_file.is_null() {
+                true  => Option::None,
+                false => {
+                    GROOVE_FILE_RC.lock().unwrap().incr(groove_file);
+                    Option::Some(File { groove_file: groove_file })
+                }
+            }
+        }
+    }
+
     pub fn filename(&self) -> Path {
         unsafe {
             let slice = std::ffi::c_str_to_bytes(&(*self.groove_file).filename);
@@ -1063,22 +1079,6 @@ pub fn version() -> &'static str {
         let version = groove_version();
         let slice = std::ffi::c_str_to_bytes(&version);
         std::mem::transmute::<&str, &'static str>(std::str::from_utf8(slice).unwrap())
-    }
-}
-
-/// open a file on disk and prepare to stream audio from it
-pub fn file_open(filename: &Path) -> Option<File> {
-    init();
-    let c_filename = CString::from_slice(filename.as_vec());
-    unsafe {
-        let groove_file = groove_file_open(c_filename.as_ptr());
-        match groove_file.is_null() {
-            true  => Option::None,
-            false => {
-                GROOVE_FILE_RC.lock().unwrap().incr(groove_file);
-                Option::Some(File { groove_file: groove_file })
-            }
-        }
     }
 }
 

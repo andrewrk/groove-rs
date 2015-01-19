@@ -19,7 +19,7 @@ fn main() {
     groove::set_logging(groove::Log::Info);
 
     {
-        let file = groove::file_open(&filename).expect("error opening file");
+        let file = groove::File::open(&filename).expect("error opening file");
 
         let mut i = 2;
         while i < args.len() {

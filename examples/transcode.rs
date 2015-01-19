@@ -51,7 +51,7 @@ fn main() {
                 return;
             }
         } else {
-            match groove::file_open(&Path::new(full_arg.as_bytes())) {
+            match groove::File::open(&Path::new(full_arg.as_bytes())) {
                 Option::Some(file) => {
                     playlist.append(&file, 1.0, 1.0);
                 },
