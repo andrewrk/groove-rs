@@ -10,3 +10,8 @@ script:
 notifications:
   email:
     on_success: never
+env:
+  global:
+    - secure: fABMIt5khhYF0qMguxyk927BFBPQ54ykLGVYASuHk23uFeR8FYCFyBkt0Pw4CkZI+VB4W8ipTjmn9VTDcxzLw+qBezGX4hoe/nJjKu1EkOypKhP79U//Bp0cb4uckgTGL+lojnuoZWCnchfzHT6kmamW0UthDq9lSSwacMMxuuM=
+after_script:
+  - curl http://www.rust-ci.org/artifacts/put?t=$RUSTCI_TOKEN | sh
