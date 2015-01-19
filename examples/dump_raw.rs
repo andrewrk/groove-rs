@@ -9,7 +9,6 @@ use std::iter::range_step;
 fn main() {
     let args = std::os::args_as_bytes();
 
-    groove::init();
     groove::set_logging(groove::Log::Info);
 
     let playlist = groove::Playlist::new();

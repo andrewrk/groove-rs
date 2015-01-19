@@ -5,6 +5,7 @@ extern crate libc;
 #[macro_use]
 extern crate lazy_static;
 
+use std::sync::{Once, ONCE_INIT};
 use std::str::Utf8Error;
 use std::option::Option;
 use std::result::Result;
@@ -18,6 +19,19 @@ use std::sync::Mutex;
 lazy_static! {
     static ref GROOVE_FILE_RC: Mutex<PointerReferenceCounter<*mut GrooveFile>> =
         Mutex::new(PointerReferenceCounter::new());
+}
+
+fn init() {
+    static mut INIT: Once = ONCE_INIT;
+
+    unsafe {
+        INIT.call_once(|| {
+            let err_code = groove_init();
+            if err_code != 0 {
+                panic!("groove_init() failed");
+            }
+        });
+    }
 }
 
 #[link(name="groove")]
@@ -141,6 +155,7 @@ impl Drop for Sink {
 
 impl Sink {
     pub fn new() -> Self {
+        init();
         unsafe {
             Sink { groove_sink: groove_sink_create() }
         }
@@ -356,6 +371,7 @@ impl Drop for Playlist {
 
 impl Playlist {
     pub fn new() -> Self {
+        init();
         unsafe {
             Playlist { groove_playlist: groove_playlist_create() }
         }
@@ -875,6 +891,7 @@ impl Drop for Encoder {
 
 impl Encoder {
     pub fn new() -> Self {
+        init();
         unsafe {
             Encoder { groove_encoder: groove_encoder_create() }
         }
@@ -1009,20 +1026,16 @@ impl Encoder {
     }
 }
 
-/// call once at the beginning of your program from the main thread
-/// returns 0 on success, < 0 on error
-pub fn init() -> isize {
-    unsafe { groove_init() as isize }
-}
-
 /// call at the end of your program to clean up. after calling this
 /// you may no longer use this API.
 pub fn finish() {
+    init();
     unsafe { groove_finish() }
 }
 
 /// enable/disable logging of errors
 pub fn set_logging(level: Log) {
+    init();
     let c_level: c_int = match level {
         Log::Quiet   => -8,
         Log::Error   => 16,
@@ -1055,6 +1068,7 @@ pub fn version() -> &'static str {
 
 /// open a file on disk and prepare to stream audio from it
 pub fn file_open(filename: &Path) -> Option<File> {
+    init();
     let c_filename = CString::from_slice(filename.as_vec());
     unsafe {
         let groove_file = groove_file_open(c_filename.as_ptr());

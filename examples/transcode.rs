@@ -17,7 +17,6 @@ fn main() {
     let mut mime_option = Option::None;
     let mut output_file_name_option = Option::None;
 
-    groove::init();
     groove::set_logging(groove::Log::Info);
 
     let playlist = groove::Playlist::new();

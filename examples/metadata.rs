@@ -16,7 +16,6 @@ fn main() {
     let _ = writeln!(&mut stderr, "Using libgroove version v{}", groove::version());
 
     let filename = Path::new(args[1].as_bytes());
-    groove::init();
     groove::set_logging(groove::Log::Info);
 
     {
