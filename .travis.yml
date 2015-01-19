@@ -1,8 +1,11 @@
 language: rust
+install:
+  sudo apt-add-repository -y ppa:andrewrk/libgroove
+  sudo apt-get update
+  sudo apt-get install libgroove-dev
 script:
   - cargo build --verbose
   - cargo test --verbose
-  - rustdoc --test README.md -L target
   - cargo doc
 notifications:
   email:
