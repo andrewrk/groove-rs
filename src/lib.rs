@@ -53,6 +53,7 @@ extern {
     fn groove_playlist_destroy(playlist: *mut GroovePlaylist);
     fn groove_playlist_count(playlist: *mut GroovePlaylist) -> c_int;
     fn groove_playlist_clear(playlist: *mut GroovePlaylist);
+    fn groove_playlist_set_fill_mode(playlist: *mut GroovePlaylist, mode: c_int);
 
     fn groove_encoder_create() -> *mut GrooveEncoder;
     fn groove_encoder_destroy(encoder: *mut GrooveEncoder);
@@ -64,6 +65,121 @@ extern {
                                  block: c_int) -> c_int;
 
     fn groove_buffer_unref(buffer: *mut GrooveBuffer);
+
+    fn groove_sink_create() -> *mut GrooveSink;
+    fn groove_sink_destroy(sink: *mut GrooveSink);
+    fn groove_sink_attach(sink: *mut GrooveSink, playlist: *mut GroovePlaylist) -> c_int;
+    fn groove_sink_detach(sink: *mut GrooveSink) -> c_int;
+    fn groove_sink_buffer_get(sink: *mut GrooveSink, buffer: *mut *mut GrooveBuffer,
+                              block: c_int) -> c_int;
+}
+
+#[repr(C)]
+struct GrooveSink {
+    /// set this to the audio format you want the sink to output
+    audio_format: GrooveAudioFormat,
+    /// Set this flag to ignore audio_format. If you set this flag, the
+    /// buffers you pull from this sink could have any audio format.
+    disable_resample: c_int,
+    /// If you leave this to its default of 0, frames pulled from the sink
+    /// will have sample count determined by efficiency.
+    /// If you set this to a positive number, frames pulled from the sink
+    /// will always have this number of samples.
+    buffer_sample_count: c_int,
+
+    /// how big the buffer queue should be, in sample frames.
+    /// groove_sink_create defaults this to 8192
+    buffer_size: c_int,
+
+    /// This volume adjustment only applies to this sink.
+    /// It is recommended that you leave this at 1.0 and instead adjust the
+    /// gain of the playlist.
+    /// If you want to change this value after you have already attached the
+    /// sink to the playlist, you must use groove_sink_set_gain.
+    /// float format. Defaults to 1.0
+    gain: c_double,
+
+    /// set to whatever you want
+    userdata: *mut c_void,
+    /// called when the audio queue is flushed. For example, if you seek to a
+    /// different location in the song.
+    flush: extern fn(sink: *mut GrooveSink),
+    /// called when a playlist item is deleted. Take this opportunity to remove
+    /// all your references to the GroovePlaylistItem.
+    purge: extern fn(sink: *mut GrooveSink, item: *mut GroovePlaylistItem),
+    /// called when the playlist is paused
+    pause: extern fn(sink: *mut GrooveSink),
+    /// called when the playlist is played
+    play: extern fn(sink: *mut GrooveSink),
+
+    /// read-only. set when you call groove_sink_attach. cleared when you call
+    /// groove_sink_detach
+    playlist: *mut GroovePlaylist,
+
+    /// read-only. automatically computed from audio_format when you call
+    /// groove_sink_attach
+    bytes_per_sec: c_int,
+}
+
+/// use this to get access to a realtime raw audio buffer
+/// for example you could use it to draw a waveform or other visualization
+/// GroovePlayer uses this internally to get the audio buffer for playback
+pub struct Sink {
+    groove_sink: *mut GrooveSink,
+}
+
+impl Drop for Sink {
+    fn drop(&mut self) {
+        unsafe {
+            if !(*self.groove_sink).playlist.is_null() {
+                groove_sink_detach(self.groove_sink);
+            }
+            groove_sink_destroy(self.groove_sink)
+        }
+    }
+}
+
+impl Sink {
+    pub fn new() -> Self {
+        unsafe {
+            Sink { groove_sink: groove_sink_create() }
+        }
+    }
+    pub fn set_audio_format(&self, format: AudioFormat) {
+        unsafe {
+            (*self.groove_sink).audio_format = format.to_groove();
+        }
+    }
+    pub fn attach(&self, playlist: &Playlist) -> Result<(), i32> {
+        unsafe {
+            let err_code = groove_sink_attach(self.groove_sink, playlist.groove_playlist);
+            if err_code >= 0 {
+                Result::Ok(())
+            } else {
+                Result::Err(err_code as i32)
+            }
+        }
+    }
+
+    pub fn detach(&self) {
+        unsafe {
+            let _ = groove_sink_detach(self.groove_sink);
+        }
+    }
+
+    /// returns None on end of playlist, Some<DecodedBuffer> when there is a buffer
+    /// blocks the thread until a buffer or end is found
+    pub fn buffer_get_blocking(&self) -> Option<DecodedBuffer> {
+        unsafe {
+            let mut buffer: *mut GrooveBuffer = std::ptr::null_mut();
+            match groove_sink_buffer_get(self.groove_sink, &mut buffer, 1) {
+                BUFFER_NO  => panic!("did not expect BUFFER_NO when blocking"),
+                BUFFER_YES => Option::Some(DecodedBuffer { groove_buffer: buffer }),
+                BUFFER_END => Option::None,
+                _ => panic!("unexpected buffer result"),
+            }
+        }
+    }
 }
 
 /// all fields read-only
@@ -93,11 +209,12 @@ struct GrooveBuffer {
     pts: uint64_t,
 }
 
-pub struct Buf {
+/// A buffer which contains encoded audio data
+pub struct EncodedBuffer {
     groove_buffer: *mut GrooveBuffer,
 }
 
-impl Drop for Buf {
+impl Drop for EncodedBuffer {
     fn drop(&mut self) {
         unsafe {
             groove_buffer_unref(self.groove_buffer);
@@ -105,9 +222,59 @@ impl Drop for Buf {
     }
 }
 
-impl Buf {
+impl EncodedBuffer {
     pub fn as_vec(&self) -> &[u8] {
         unsafe {
+            let raw_slice = std::raw::Slice {
+                data: *(*self.groove_buffer).data,
+                len: (*self.groove_buffer).size as usize,
+            };
+            std::mem::transmute::<std::raw::Slice<uint8_t>, &[u8]>(raw_slice)
+        }
+    }
+}
+
+/// A buffer which contains raw samples
+pub struct DecodedBuffer {
+    groove_buffer: *mut GrooveBuffer,
+}
+
+impl Drop for DecodedBuffer {
+    fn drop(&mut self) {
+        unsafe {
+            groove_buffer_unref(self.groove_buffer);
+        }
+    }
+}
+
+impl DecodedBuffer {
+    pub fn channel_as_vec(&self, channel_index: u32) -> &[u8] {
+        unsafe {
+            let sample_fmt = (*self.groove_buffer).format.sample_fmt;
+            if !SampleFormat::from_groove(sample_fmt).planar {
+                panic!("channel_as_vec works for planar buffers only");
+            }
+            let channel_count = groove_channel_layout_count(
+                (*self.groove_buffer).format.channel_layout) as u32;
+            if channel_index >= channel_count {
+                panic!("invalid channel index");
+            }
+            let frame_count = (*self.groove_buffer).frame_count as usize;
+            let bytes_per_sample = groove_sample_format_bytes_per_sample(sample_fmt) as usize;
+            let size = frame_count * bytes_per_sample;
+            let raw_slice = std::raw::Slice {
+                data: *((*self.groove_buffer).data.offset(channel_index as isize)),
+                len: size,
+            };
+            std::mem::transmute::<std::raw::Slice<uint8_t>, &[u8]>(raw_slice)
+        }
+    }
+    pub fn as_vec(&self) -> &[u8] {
+        unsafe {
+            let sample_fmt = (*self.groove_buffer).format.sample_fmt;
+            if SampleFormat::from_groove(sample_fmt).planar {
+                panic!("as_vec works for interleaved buffers only");
+            }
             let raw_slice = std::raw::Slice {
                 data: *(*self.groove_buffer).data,
                 len: (*self.groove_buffer).size as usize,
@@ -277,6 +444,14 @@ impl Playlist {
             }
         }
     }
+
+    pub fn set_fill_mode(&self, mode: FillMode) {
+        let mode_int = match mode {
+            FillMode::EverySinkFull => EVERY_SINK_FULL,
+            FillMode::AnySinkFull   => ANY_SINK_FULL,
+        };
+        unsafe { groove_playlist_set_fill_mode(self.groove_playlist, mode_int) }
+    }
 }
 
 pub struct PlaylistIterator {
@@ -441,6 +616,21 @@ impl<'a> Iterator for MetadataIterator<'a> {
     }
 }
 
+const EVERY_SINK_FULL: c_int = 0;
+const ANY_SINK_FULL:   c_int = 1;
+
+pub enum FillMode {
+    /// This is the default behavior. The playlist will decode audio if any sinks
+    /// are not full. If any sinks do not drain fast enough the data will buffer up
+    /// in the playlist.
+    EverySinkFull,
+
+    /// With this behavior, the playlist will stop decoding audio when any attached
+    /// sink is full, and then resume decoding audio every sink is not full.
+    AnySinkFull,
+}
+impl Copy for FillMode {}
+
 pub enum Log {
     Quiet,
     Error,
@@ -513,9 +703,9 @@ const SAMPLE_FMT_DBLP: i32 =  9;
 
 /// how to organize bits which represent audio samples
 pub struct SampleFormat {
-    sample_type: SampleType,
+    pub sample_type: SampleType,
     /// planar means non-interleaved
-    planar: bool,
+    pub planar: bool,
 }
 impl Copy for SampleFormat {}
 
@@ -572,8 +762,8 @@ impl SampleFormat {
         }
     }
 
-    pub fn bytes_per_sample(&self) -> i32 {
-        unsafe { groove_sample_format_bytes_per_sample(self.to_groove()) }
+    pub fn bytes_per_sample(&self) -> u32 {
+        unsafe { groove_sample_format_bytes_per_sample(self.to_groove()) as u32 }
     }
 }
 
@@ -612,9 +802,9 @@ struct GrooveAudioFormat {
 }
 
 pub struct AudioFormat {
-    sample_rate: i32,
-    channel_layout: ChannelLayout,
-    sample_fmt: SampleFormat,
+    pub sample_rate: i32,
+    pub channel_layout: ChannelLayout,
+    pub sample_fmt: SampleFormat,
 }
 impl Copy for AudioFormat {}
 
@@ -804,14 +994,14 @@ impl Encoder {
         }
     }
 
-    /// returns None on end of playlist, Some<Buf> when there is a buffer
+    /// returns None on end of playlist, Some<EncodedBuffer> when there is a buffer
     /// blocks the thread until a buffer or end is found
-    pub fn buffer_get_blocking(&self) -> Option<Buf> {
+    pub fn buffer_get_blocking(&self) -> Option<EncodedBuffer> {
         unsafe {
             let mut buffer: *mut GrooveBuffer = std::ptr::null_mut();
             match groove_encoder_buffer_get(self.groove_encoder, &mut buffer, 1) {
                 BUFFER_NO  => panic!("did not expect BUFFER_NO when blocking"),
-                BUFFER_YES => Option::Some(Buf { groove_buffer: buffer }),
+                BUFFER_YES => Option::Some(EncodedBuffer { groove_buffer: buffer }),
                 BUFFER_END => Option::None,
                 _ => panic!("unexpected buffer result"),
             }
