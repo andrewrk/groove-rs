@@ -3,7 +3,7 @@
 name = "groove"
 version = "0.0.1"
 authors = ["Andrew Kelley <superjoe30@gmail.com>"]
-repository = "https://github.com/andrewrk/rust-groove"
+repository = "https://github.com/andrewrk/groove-rs"
 license = "MIT"
 documentation = "https://s3.amazonaws.com/superjoe/doc/rust-groove/groove/index.html"
 

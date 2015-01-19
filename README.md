@@ -1,4 +1,4 @@
-# rust-groove
+# groove-rs
 
 Rust bindings to [libgroove](https://github.com/andrewrk/libgroove).
 
