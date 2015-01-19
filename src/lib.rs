@@ -1042,8 +1042,9 @@ impl Encoder {
     }
 }
 
-/// call at the end of your program to clean up. after calling this
-/// you may no longer use this API.
+/// Call at the end of your program to clean up. After calling this you may no
+/// longer use this API. You may choose to never call this function, in which
+/// case the worst thing that can happen is valgrind may report a memory leak.
 pub fn finish() {
     init();
     unsafe { groove_finish() }
