@@ -34,7 +34,7 @@ fn main() {
     loop {
         match sink.buffer_get_blocking() {
             Option::Some(decoded_buffer) => {
-                let buf = decoded_buffer.as_vec();
+                let buf = decoded_buffer.as_slice_i16();
                 for i in range_step(0, buf.len(), 2) {
                     println!("{} {}", buf[i], buf[i + 1]);
                 }

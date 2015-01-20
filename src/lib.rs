@@ -90,10 +90,7 @@ extern {
 
 #[repr(C)]
 struct GrooveSink {
-    /// set this to the audio format you want the sink to output
     audio_format: GrooveAudioFormat,
-    /// Set this flag to ignore audio_format. If you set this flag, the
-    /// buffers you pull from this sink could have any audio format.
     disable_resample: c_int,
     /// If you leave this to its default of 0, frames pulled from the sink
     /// will have sample count determined by efficiency.
@@ -160,11 +157,14 @@ impl Sink {
             Sink { groove_sink: groove_sink_create() }
         }
     }
+
+    /// set this to the audio format you want the sink to output
     pub fn set_audio_format(&self, format: AudioFormat) {
         unsafe {
             (*self.groove_sink).audio_format = format.to_groove();
         }
     }
+
     pub fn attach(&self, playlist: &Playlist) -> Result<(), i32> {
         unsafe {
             let err_code = groove_sink_attach(self.groove_sink, playlist.groove_playlist);
@@ -193,6 +193,14 @@ impl Sink {
                 BUFFER_END => Option::None,
                 _ => panic!("unexpected buffer result"),
             }
+        }
+    }
+
+    /// Set this flag to ignore audio_format. If you set this flag, the
+    /// buffers you pull from this sink could have any audio format.
+    pub fn disable_resample(&self, disabled: bool) {
+        unsafe {
+            (*self.groove_sink).disable_resample = if disabled {1} else {0}
         }
     }
 }
@@ -263,11 +271,67 @@ impl Drop for DecodedBuffer {
 }
 
 impl DecodedBuffer {
-    pub fn channel_as_vec(&self, channel_index: u32) -> &[u8] {
+    /// returns a vector of f64
+    /// panics if the buffer is not planar
+    /// panics if the buffer is not SampleType::Dbl
+    pub fn channel_as_slice_f64(&self, channel_index: u32) -> &[f64] {
+        match self.sample_format().sample_type {
+            SampleType::Dbl => self.channel_as_slice_generic(channel_index),
+            _ => panic!("buffer not in f64 format"),
+        }
+    }
+
+    /// returns a vector of f32
+    /// panics if the buffer is not planar
+    /// panics if the buffer is not SampleType::Flt
+    pub fn channel_as_slice_f32(&self, channel_index: u32) -> &[f32] {
+        match self.sample_format().sample_type {
+            SampleType::Flt => self.channel_as_slice_generic(channel_index),
+            _ => panic!("buffer not in f32 format"),
+        }
+    }
+
+    /// returns a vector of i32
+    /// panics if the buffer is not planar
+    /// panics if the buffer is not SampleType::S32
+    pub fn channel_as_slice_i32(&self, channel_index: u32) -> &[i32] {
+        match self.sample_format().sample_type {
+            SampleType::S32 => self.channel_as_slice_generic(channel_index),
+            _ => panic!("buffer not in i32 format"),
+        }
+    }
+
+    /// returns a vector of i16
+    /// panics if the buffer is not planar
+    /// panics if the buffer is not SampleType::S16
+    pub fn channel_as_slice_i16(&self, channel_index: u32) -> &[i16] {
+        match self.sample_format().sample_type {
+            SampleType::S16 => self.channel_as_slice_generic(channel_index),
+            _ => panic!("buffer not in i16 format"),
+        }
+    }
+
+    /// returns a vector of u8
+    /// panics if the buffer is not planar
+    /// panics if the buffer is not SampleType::U8
+    pub fn channel_as_slice_u8(&self, channel_index: u32) -> &[u8] {
+        match self.sample_format().sample_type {
+            SampleType::U8 => self.channel_as_slice_generic(channel_index),
+            _ => panic!("buffer not in u8 format"),
+        }
+    }
+
+    pub fn sample_format(&self) -> SampleFormat {
         unsafe {
-            let sample_fmt = (*self.groove_buffer).format.sample_fmt;
-            if !SampleFormat::from_groove(sample_fmt).planar {
-                panic!("channel_as_vec works for planar buffers only");
+            SampleFormat::from_groove((*self.groove_buffer).format.sample_fmt)
+        }
+    }
+
+    fn channel_as_slice_generic<T>(&self, channel_index: u32) -> &[T] {
+        unsafe {
+            let sample_fmt = self.sample_format();
+            if !sample_fmt.planar {
+                panic!("expected planar buffer");
             }
             let channel_count = groove_channel_layout_count(
                 (*self.groove_buffer).format.channel_layout) as u32;
@@ -275,26 +339,90 @@ impl DecodedBuffer {
                 panic!("invalid channel index");
             }
             let frame_count = (*self.groove_buffer).frame_count as usize;
-            let bytes_per_sample = groove_sample_format_bytes_per_sample(sample_fmt) as usize;
-            let size = frame_count * bytes_per_sample;
             let raw_slice = std::raw::Slice {
                 data: *((*self.groove_buffer).data.offset(channel_index as isize)),
-                len: size,
+                len: frame_count,
             };
-            std::mem::transmute::<std::raw::Slice<uint8_t>, &[u8]>(raw_slice)
+            std::mem::transmute::<std::raw::Slice<uint8_t>, &[T]>(raw_slice)
         }
     }
-    pub fn as_vec(&self) -> &[u8] {
+
+    /// returns a single channel and always returns [u8]
+    /// panics if the buffer is not planar
+    pub fn channel_as_slice_raw(&self, channel_index: u32) -> &[u8] {
+        self.channel_as_slice_generic(channel_index)
+    }
+
+    /// returns a vector of f64
+    /// panics if the buffer is planar
+    /// panics if the buffer is not SampleType::Dbl
+    pub fn as_slice_f64(&self) -> &[f64] {
+        match self.sample_format().sample_type {
+            SampleType::Dbl => self.as_slice_generic(),
+            _ => panic!("buffer not in f64 format"),
+        }
+    }
+
+    /// returns a vector of f32
+    /// panics if the buffer is planar
+    /// panics if the buffer is not SampleType::Flt
+    pub fn as_slice_f32(&self) -> &[f32] {
+        match self.sample_format().sample_type {
+            SampleType::Flt => self.as_slice_generic(),
+            _ => panic!("buffer not in f32 format"),
+        }
+    }
+
+    /// returns a vector of i32
+    /// panics if the buffer is planar
+    /// panics if the buffer is not SampleType::S32
+    pub fn as_slice_i32(&self) -> &[i32] {
+        match self.sample_format().sample_type {
+            SampleType::S32 => self.as_slice_generic(),
+            _ => panic!("buffer not in i32 format"),
+        }
+    }
+
+    /// returns a vector of i16
+    /// panics if the buffer is planar
+    /// panics if the buffer is not SampleType::S16
+    pub fn as_slice_i16(&self) -> &[i16] {
+        match self.sample_format().sample_type {
+            SampleType::S16 => self.as_slice_generic(),
+            _ => panic!("buffer not in i16 format"),
+        }
+    }
+
+    /// returns a vector of u8
+    /// panics if the buffer is planar
+    /// panics if the buffer is not SampleType::U8
+    pub fn as_slice_u8(&self) -> &[u8] {
+        match self.sample_format().sample_type {
+            SampleType::U8 => self.as_slice_generic(),
+            _ => panic!("buffer not in u8 format"),
+        }
+    }
+
+    /// returns all the buffer data as [u8]
+    /// panics if the buffer is planar
+    pub fn as_slice_raw(&self) -> &[u8] {
+        self.as_slice_generic()
+    }
+
+    fn as_slice_generic<T>(&self) -> &[T] {
         unsafe {
             let sample_fmt = (*self.groove_buffer).format.sample_fmt;
             if SampleFormat::from_groove(sample_fmt).planar {
                 panic!("as_vec works for interleaved buffers only");
             }
+            let channel_count = groove_channel_layout_count(
+                (*self.groove_buffer).format.channel_layout) as usize;
+            let frame_count = (*self.groove_buffer).frame_count as usize;
             let raw_slice = std::raw::Slice {
                 data: *(*self.groove_buffer).data,
-                len: (*self.groove_buffer).size as usize,
+                len: channel_count * frame_count,
             };
-            std::mem::transmute::<std::raw::Slice<uint8_t>, &[u8]>(raw_slice)
+            std::mem::transmute::<std::raw::Slice<uint8_t>, &[T]>(raw_slice)
         }
     }
 }
