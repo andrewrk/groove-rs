@@ -231,11 +231,18 @@ struct GrooveBuffer {
     /// presentation time stamp of the buffer
     pts: uint64_t,
 }
+// Read-only structs are Sync
+unsafe impl Sync for GrooveBuffer {}
+// Promise rust that nothing points to a GrooveBuffer
+// when it destructs
+unsafe impl Send for GrooveBuffer {}
 
 /// A buffer which contains encoded audio data
 pub struct EncodedBuffer {
     groove_buffer: *mut GrooveBuffer,
 }
+unsafe impl Sync for EncodedBuffer {}
+unsafe impl Send for EncodedBuffer {}
 
 impl Drop for EncodedBuffer {
     fn drop(&mut self) {
@@ -261,6 +268,8 @@ impl EncodedBuffer {
 pub struct DecodedBuffer {
     groove_buffer: *mut GrooveBuffer,
 }
+unsafe impl Sync for DecodedBuffer {}
+unsafe impl Send for DecodedBuffer {}
 
 impl Drop for DecodedBuffer {
     fn drop(&mut self) {
