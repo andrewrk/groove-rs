@@ -25,7 +25,7 @@ fn main() {
     while i < args.len() {
         let full_arg = args[i].as_slice();
         if full_arg.starts_with("--") {
-            let arg = full_arg.slice_from(2);
+            let arg = &full_arg[2..];
             if i + 1 >= args.len() {
                 print_usage(&mut stderr, exe);
                 std::os::set_exit_status(1);
