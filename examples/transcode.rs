@@ -2,12 +2,12 @@
 extern crate groove;
 
 use std::option::Option;
-use std::io::File;
+use std::old_io::File;
 
 // transcode one or more files into one output file
 
 fn main() {
-    let mut stderr = std::io::stderr();
+    let mut stderr = std::old_io::stderr();
     let args = std::os::args();
     let exe = args[0].as_slice();
 
@@ -113,7 +113,7 @@ fn main() {
     loop {
         match encoder.buffer_get_blocking() {
             Option::Some(buf) => {
-                f.write(buf.as_vec()).ok().expect("write error");
+                f.write_all(buf.as_vec()).ok().expect("write error");
             },
             Option::None => break,
         }
@@ -122,6 +122,6 @@ fn main() {
     groove::finish();
 }
 
-fn print_usage(stderr: &mut std::io::LineBufferedWriter<std::io::stdio::StdWriter>, exe: &str) {
+fn print_usage(stderr: &mut std::old_io::LineBufferedWriter<std::old_io::stdio::StdWriter>, exe: &str) {
     let _ = write!(stderr, "Usage: {} file1 [file2 ...] --output outputfile [--bitrate 320] [--format name] [--codec name] [--mime mimetype]\n", exe);
 }

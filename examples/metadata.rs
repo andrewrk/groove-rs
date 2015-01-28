@@ -4,7 +4,7 @@ extern crate groove;
 // read or update metadata in a media file
 
 fn main() {
-    let mut stderr = std::io::stderr();
+    let mut stderr = std::old_io::stderr();
     let args = std::os::args();
     let exe = args[0].as_slice();
 
@@ -68,7 +68,7 @@ fn main() {
     groove::finish();
 }
 
-fn print_usage(stderr: &mut std::io::LineBufferedWriter<std::io::stdio::StdWriter>, exe: &str) {
+fn print_usage(stderr: &mut std::old_io::LineBufferedWriter<std::old_io::stdio::StdWriter>, exe: &str) {
     let _ = write!(stderr, "Usage: {} <file> [--update key value] [--delete key]\n", exe);
     let _ = write!(stderr, "Repeat --update and --delete as many times as you need to.\n");
 }
