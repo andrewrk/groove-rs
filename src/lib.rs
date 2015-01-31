@@ -791,6 +791,7 @@ impl<'a> Iterator for MetadataIterator<'a> {
 const EVERY_SINK_FULL: c_int = 0;
 const ANY_SINK_FULL:   c_int = 1;
 
+#[derive(Copy, Debug)]
 pub enum FillMode {
     /// This is the default behavior. The playlist will decode audio if any sinks
     /// are not full. If any sinks do not drain fast enough the data will buffer up
@@ -801,17 +802,16 @@ pub enum FillMode {
     /// sink is full, and then resume decoding audio every sink is not full.
     AnySinkFull,
 }
-impl Copy for FillMode {}
 
+#[derive(Copy, Debug)]
 pub enum Log {
     Quiet,
     Error,
     Warning,
     Info,
 }
-impl Copy for Log {}
 
-
+#[derive(Copy, Debug)]
 pub enum ChannelLayout {
     FrontLeft,
     FrontRight,
@@ -819,7 +819,6 @@ pub enum ChannelLayout {
     LayoutMono,
     LayoutStereo,
 }
-impl Copy for ChannelLayout {}
 
 const CH_FRONT_LEFT    :uint64_t = 0x00000001;
 const CH_FRONT_RIGHT   :uint64_t = 0x00000002;
@@ -881,6 +880,7 @@ pub struct SampleFormat {
 }
 impl Copy for SampleFormat {}
 
+#[derive(Copy, Debug)]
 pub enum SampleType {
     NoType,
     /// unsigned 8 bits
@@ -894,7 +894,6 @@ pub enum SampleType {
     /// double (64 bits)
     Dbl,
 }
-impl Copy for SampleType {}
 
 impl SampleFormat {
     fn to_groove(&self) -> i32 {

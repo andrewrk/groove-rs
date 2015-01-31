@@ -1,4 +1,8 @@
 #![feature(os)]
+#![feature(core)]
+#![feature(io)]
+#![feature(collections)]
+#![feature(path)]
 extern crate groove;
 
 use std::option::Option;

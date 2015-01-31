@@ -1,4 +1,7 @@
 #![feature(os)]
+#![feature(io)]
+#![feature(core)]
+#![feature(path)]
 extern crate groove;
 
 // read or update metadata in a media file
