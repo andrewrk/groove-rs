@@ -1,4 +1,6 @@
-#![allow(unstable)]
+#![feature(os)]
+#![feature(core)]
+#![feature(path)]
 extern crate groove;
 
 use std::option::Option;

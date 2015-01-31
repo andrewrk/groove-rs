@@ -1,4 +1,4 @@
-#![allow(unstable)]
+#![feature(os)]
 extern crate groove;
 
 // read or update metadata in a media file

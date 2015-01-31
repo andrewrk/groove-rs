@@ -1,5 +1,8 @@
-#![allow(unstable)]
 #![allow(missing_copy_implementations)]
+#![feature(core)]
+#![feature(std_misc)]
+#![feature(libc)]
+#![feature(path)]
 extern crate libc;
 
 #[macro_use]
